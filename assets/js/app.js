@@ -852,6 +852,54 @@
 
     document.querySelectorAll('select').forEach(enhanceSelect);
 
+    document.querySelectorAll('[data-order-type-select]').forEach((select) => {
+        const form = select.closest('form');
+        const addressPanel = form?.querySelector('[data-order-address]');
+        const addressInput = addressPanel?.querySelector('textarea');
+        if (!addressPanel || !addressInput) return;
+
+        const syncAddressField = () => {
+            const requiresAddress = select.selectedOptions[0]?.dataset.requiresAddress === '1';
+            addressPanel.hidden = !requiresAddress;
+            addressInput.required = requiresAddress;
+            if (!requiresAddress) addressInput.value = '';
+        };
+        select.addEventListener('change', syncAddressField);
+        syncAddressField();
+    });
+
+    document.querySelectorAll('[data-use-current-location]').forEach((button) => {
+        const addressPanel = button.closest('[data-order-address]');
+        const addressInput = addressPanel?.querySelector('textarea');
+        const status = addressPanel?.querySelector('[data-location-status]');
+        if (!addressInput || !status) return;
+
+        button.addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                status.textContent = 'Browser ini tidak mendukung lokasi saat ini.';
+                return;
+            }
+            button.disabled = true;
+            status.textContent = 'Meminta izin lokasi...';
+            navigator.geolocation.getCurrentPosition(
+                ({ coords }) => {
+                    addressInput.value = `https://maps.google.com/?q=${coords.latitude},${coords.longitude}`;
+                    addressInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    status.textContent = 'Lokasi ditambahkan. Kamu tetap bisa mengubah alamatnya.';
+                    button.disabled = false;
+                },
+                (error) => {
+                    console.error('Lokasi saat ini tidak dapat diambil.', error);
+                    status.textContent = error.code === 1
+                        ? 'Izin lokasi ditolak. Silakan tulis alamat secara manual.'
+                        : 'Lokasi tidak dapat diambil. Silakan tulis alamat secara manual.';
+                    button.disabled = false;
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+            );
+        });
+    });
+
     document.addEventListener('click', (event) => {
         customSelects.forEach((item) => {
             if (!item.wrapper.contains(event.target) && !item.listbox.contains(event.target)) item.close();

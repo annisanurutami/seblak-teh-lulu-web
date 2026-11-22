@@ -24,7 +24,7 @@ page_title('Transaksi', 'Pesanan online', 'Periksa pesanan pelanggan dan perbaru
     <?php if (!$orders) table_empty_row(7, 'Belum ada pesanan online.'); ?>
     <?php foreach ($orders as $order): ?>
         <tr>
-            <td><strong><?= e($order['kode_pesanan']) ?></strong><small><?= $order['jenis_pesanan'] === 'dine_in' ? 'Makan di tempat' : 'Bawa pulang' ?></small></td>
+            <td><strong><?= e($order['kode_pesanan']) ?></strong><small><?= e(order_type_label((string) $order['jenis_pesanan'])) ?></small></td>
             <td><?= e($order['nama_pelanggan'] ?? 'Pelanggan') ?><small><?= e($order['no_hp'] ?? '') ?></small></td>
             <td><?= e($order['created_at']) ?></td>
             <td><?= e(rupiah($order['total'])) ?><small>Terbayar <?= e(rupiah($order['dibayar'])) ?></small></td>
@@ -45,7 +45,7 @@ page_title('Transaksi', 'Pesanan online', 'Periksa pesanan pelanggan dan perbaru
             </td>
         </tr>
         <?php $lines = db_all('SELECT oi.*, (SELECT GROUP_CONCAT(CONCAT(oiv.nama_grup, ": ", oiv.nama_pilihan) SEPARATOR ", ") FROM order_item_variants oiv WHERE oiv.order_item_id = oi.id) AS variants, (SELECT GROUP_CONCAT(CONCAT(oit.nama_topping, " x", oit.jumlah, " (", oit.jumlah * oit.pcs_per_paket, " pcs)") SEPARATOR ", ") FROM order_item_toppings oit WHERE oit.order_item_id = oi.id) AS toppings FROM order_items oi WHERE oi.order_id = :id', ['id' => $order['id']]); ?>
-        <tr class="order-detail-row"><td colspan="7"><strong>Isi:</strong> <?php foreach ($lines as $line): ?><span class="order-detail"><?= e($line['nama_produk']) ?> × <?= (int) $line['jumlah'] ?><?= $line['variants'] ? ' · ' . e($line['variants']) : '' ?><?= $line['toppings'] ? ' · ' . e($line['toppings']) : '' ?> · <?= e(rupiah($line['subtotal'])) ?></span><?php endforeach; ?><?= $order['catatan'] ? '<span class="order-detail">Catatan: ' . e($order['catatan']) . '</span>' : '' ?></td></tr>
+        <tr class="order-detail-row"><td colspan="7"><strong>Isi:</strong> <?php foreach ($lines as $line): ?><span class="order-detail"><?= e($line['nama_produk']) ?> × <?= (int) $line['jumlah'] ?><?= $line['variants'] ? ' · ' . e($line['variants']) : '' ?><?= $line['toppings'] ? ' · ' . e($line['toppings']) : '' ?> · <?= e(rupiah($line['subtotal'])) ?></span><?php endforeach; ?><?php if (!empty($order['alamat_pengantaran'])): ?><span class="order-detail">Alamat pengantaran: <?= e($order['alamat_pengantaran']) ?></span><?php endif; ?><?= $order['catatan'] ? '<span class="order-detail">Catatan: ' . e($order['catatan']) . '</span>' : '' ?></td></tr>
     <?php endforeach; ?>
     </tbody></table></div>
 </section>

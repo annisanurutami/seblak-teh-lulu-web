@@ -5,43 +5,21 @@ declare(strict_types=1);
 require_once __DIR__ . '/includes/domain.php';
 require_once __DIR__ . '/includes/layout.php';
 
-$storedHistory = $_SESSION['customer_online_order_history'] ?? [];
-$historyEntries = [];
-if (is_array($storedHistory)) {
-    foreach ($storedHistory as $rawId => $entry) {
-        $id = filter_var((string) $rawId, FILTER_VALIDATE_INT);
-        if ($id === false || $id < 1 || !is_array($entry)
-            || !is_string($entry['whatsapp_number'] ?? null)
-            || !is_string($entry['message'] ?? null)) {
-            continue;
-        }
-        $historyEntries[(int) $id] = $entry;
-    }
-}
+$customer = require_customer();
 
-$orders = [];
-if ($historyEntries) {
-    $parameters = [];
-    $placeholders = [];
-    foreach (array_keys($historyEntries) as $index => $id) {
-        $placeholder = 'order_' . $index;
-        $placeholders[] = ':' . $placeholder;
-        $parameters[$placeholder] = $id;
-    }
-    $orders = db_all(
-        'SELECT id, kode_pesanan, nama_pelanggan, no_hp, jenis_pesanan, metode_pembayaran,
-                status_pesanan, status_pembayaran, total, catatan, created_at
-         FROM orders
-         WHERE sumber = \'online\' AND id IN (' . implode(', ', $placeholders) . ')
-         ORDER BY created_at DESC, id DESC',
-        $parameters
-    );
-}
+$orders = db_all(
+    "SELECT id, kode_pesanan, nama_pelanggan, no_hp, jenis_pesanan, alamat_pengantaran, metode_pembayaran,
+            status_pesanan, status_pembayaran, total, catatan, bukti_pembayaran, created_at
+     FROM orders
+     WHERE sumber = 'online' AND customer_id = :customer_id
+     ORDER BY created_at DESC, id DESC",
+    ['customer_id' => $customer['id']]
+);
 
 $selectedId = filter_var($_GET['order'] ?? null, FILTER_VALIDATE_INT);
 $selectedOrder = null;
 if ($orders) {
-    if (!$selectedId || !isset($historyEntries[$selectedId])) {
+    if (!$selectedId) {
         $selectedId = (int) $orders[0]['id'];
     }
     foreach ($orders as $order) {
@@ -50,6 +28,10 @@ if ($orders) {
             break;
         }
     }
+    if (!$selectedOrder) {
+        $selectedId = (int) $orders[0]['id'];
+        $selectedOrder = $orders[0];
+    }
 }
 
 $orderItems = [];
@@ -57,11 +39,11 @@ $whatsappMessage = '';
 $whatsappNumbers = [];
 if ($selectedOrder) {
     $orderItems = db_all(
-        'SELECT id, nama_produk, jumlah, subtotal FROM order_items WHERE order_id = :id ORDER BY id',
+        'SELECT id, nama_produk, jumlah, subtotal, catatan FROM order_items WHERE order_id = :id ORDER BY id',
         ['id' => $selectedId]
     );
+    $whatsappMessage = online_order_whatsapp_message($selectedOrder, $orderItems);
     if ($selectedOrder['status_pesanan'] === 'menunggu') {
-        $whatsappMessage = $historyEntries[$selectedId]['message'];
         foreach (db_all('SELECT nama, nomor, status FROM whatsapp_numbers ORDER BY status DESC, nama, id') as $number) {
             $normalizedNumber = preg_replace('/\D+/', '', (string) $number['nomor']) ?? '';
             if ($normalizedNumber === '') {
@@ -79,9 +61,9 @@ if ($selectedOrder) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Riwayat Pesanan | <?= e(APP_NAME) ?></title>
-    <link rel="stylesheet" href="<?= e(app_base_path() . '/assets/css/style.css?v=order-history-whatsapp-picker-20261115') ?>">
-    <link rel="stylesheet" href="<?= e(app_base_path() . '/assets/css/responsive.css?v=order-history-whatsapp-picker-20261115') ?>">
-    <script src="<?= e(app_base_path() . '/assets/js/app.js?v=order-history-custom-select-20261115') ?>" defer></script>
+    <link rel="stylesheet" href="<?= e(app_base_path() . '/assets/css/style.css?v=customer-order-flow-20261122') ?>">
+    <link rel="stylesheet" href="<?= e(app_base_path() . '/assets/css/responsive.css?v=customer-order-flow-20261122') ?>">
+    <script src="<?= e(app_base_path() . '/assets/js/app.js?v=customer-order-flow-20261122') ?>" defer></script>
 </head>
 <body class="store-page">
     <header class="store-header">
@@ -90,6 +72,10 @@ if ($selectedOrder) {
         </a>
         <div class="store-header-actions">
             <a class="button button-outline" href="<?= e(app_base_path() . '/menu.php') ?>">Kembali ke menu</a>
+            <form method="post" action="<?= e(app_base_path() . '/customer_logout.php') ?>">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <button class="button button-outline" type="submit">Keluar</button>
+            </form>
         </div>
     </header>
     <main class="store-content">
@@ -98,7 +84,7 @@ if ($selectedOrder) {
             <div>
                 <p class="section-kicker">PESANAN ONLINE</p>
                 <h1>Riwayat pesanan</h1>
-                <p class="muted">Hingga 20 pesanan terakhir di sesi browser ini tersimpan di sini. Kamu bisa melihat rinciannya; konfirmasi WhatsApp dapat dikirim ulang selama pesanan belum dikonfirmasi.</p>
+                <p class="muted">Pesanan tersimpan di akunmu dan tetap bisa dilihat setelah kamu keluar atau menutup website. Sesi login berakhir setiap pukul 00.00 WIB.</p>
             </div>
         </div>
         <?php if (!$orders): ?>
@@ -110,7 +96,7 @@ if ($selectedOrder) {
         <?php else: ?>
             <div class="order-history-layout">
                 <section class="panel order-history-panel">
-                    <h2>Pesanan terakhir</h2>
+                    <h2>Daftar pesanan</h2>
                     <div class="order-history-list">
                         <?php foreach ($orders as $order): ?>
                             <a class="order-history-link <?= (int) $order['id'] === (int) $selectedId ? 'active' : '' ?>" href="<?= e(app_base_path() . '/order_history.php?order=' . (int) $order['id']) ?>">
@@ -135,7 +121,8 @@ if ($selectedOrder) {
                         <div class="order-review-customer">
                             <strong><?= e($selectedOrder['nama_pelanggan'] ?? 'Pelanggan') ?></strong>
                             <?php if (!empty($selectedOrder['no_hp'])): ?><span><?= e($selectedOrder['no_hp']) ?></span><?php endif; ?>
-                            <span><?= $selectedOrder['jenis_pesanan'] === 'dine_in' ? 'Makan di tempat' : 'Bawa pulang' ?></span>
+                            <span><?= e(order_type_label((string) $selectedOrder['jenis_pesanan'])) ?></span>
+                            <?php if (!empty($selectedOrder['alamat_pengantaran'])): ?><span>Alamat: <?= e($selectedOrder['alamat_pengantaran']) ?></span><?php endif; ?>
                             <?php if (!empty($selectedOrder['metode_pembayaran'])): ?><span>Bayar via <?= e($selectedOrder['metode_pembayaran']) ?></span><?php endif; ?>
                         </div>
                         <ol class="order-review-list">
@@ -166,6 +153,7 @@ if ($selectedOrder) {
                         </ol>
                         <?php if (!empty($selectedOrder['catatan'])): ?><p class="muted">Catatan: <?= nl2br(e($selectedOrder['catatan'])) ?></p><?php endif; ?>
                         <div class="order-review-total"><span>Total pesanan</span><strong><?= e(rupiah($selectedOrder['total'])) ?></strong></div>
+                        <a class="button button-outline" href="<?= e(app_base_path() . '/order_receipt.php?order=' . (int) $selectedOrder['id']) ?>" target="_blank" rel="noopener">Cetak struk</a>
                         <?php if ($selectedOrder['status_pesanan'] === 'menunggu'): ?>
                             <label class="order-history-whatsapp-choice" for="order-whatsapp-number">
                                 Nomor WhatsApp tujuan

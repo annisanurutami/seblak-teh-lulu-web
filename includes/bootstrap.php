@@ -9,7 +9,7 @@ const APP_NAME = 'Seblak Teh Lulu';
 function app_base_path(): string
 {
     $scriptName = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '');
-    $directory = dirname($scriptName);
+    $directory = str_replace('\\', '/', dirname($scriptName));
 
     return $directory === '/' || $directory === '.' ? '' : rtrim($directory, '/');
 }

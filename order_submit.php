@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/includes/domain.php';
 
+$customer = require_customer();
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !csrf_is_valid($_POST['csrf_token'] ?? null)) {
     http_response_code(400);
     exit('Permintaan tidak valid. Kembali ke menu dan coba lagi.');
@@ -74,7 +76,12 @@ try {
     $orderId = create_order(
         $draft['items'],
         'online',
-        ['name' => $draft['name'], 'phone' => $draft['phone'], 'note' => $draft['note']],
+        [
+            'name' => $draft['name'],
+            'phone' => $draft['phone'],
+            'note' => $draft['note'],
+            'address' => $draft['address'] ?? '',
+        ],
         null,
         $draft['order_type'],
         'menunggu',
@@ -82,7 +89,8 @@ try {
         'tunai',
         (int) $whatsapp['id'],
         $method['nama'],
-        $proofFilename
+        $proofFilename,
+        (int) $customer['id']
     );
 } catch (InvalidArgumentException $exception) {
     remove_payment_proof($proofFilename);
@@ -115,7 +123,11 @@ $message .= "━━━━━━━━━━━━━━\n";
 $message .= "*PEMESAN*\n";
 $message .= "Nama         : {$draft['name']}\n";
 $message .= "No. WhatsApp : {$draft['phone']}\n";
-$message .= 'Jenis pesanan: ' . ($draft['order_type'] === 'dine_in' ? 'Makan di tempat' : 'Bawa pulang') . "\n\n";
+$message .= 'Jenis pesanan: ' . $draft['order_type_name'] . "\n";
+if (!empty($draft['address'])) {
+    $message .= 'Alamat       : ' . $draft['address'] . "\n";
+}
+$message .= "\n";
 $message .= "━━━━━━━━━━━━━━\n";
 $message .= $bowlCount > 0
     ? "*RINCIAN* ({$bowlCount} mangkuk)\n\n"
@@ -173,19 +185,6 @@ $message .= $proofFilename
 if ($draft['note'] !== '') {
     $message .= "\n\nCatatan: " . $draft['note'];
 }
-
-$history = $_SESSION['customer_online_order_history'] ?? [];
-if (!is_array($history)) {
-    $history = [];
-}
-$history[(string) $orderId] = [
-    'whatsapp_number' => (string) $whatsapp['nomor'],
-    'message' => $message,
-];
-if (count($history) > 20) {
-    $history = array_slice($history, -20, null, true);
-}
-$_SESSION['customer_online_order_history'] = $history;
 
 unset($_SESSION['online_order_draft'], $_SESSION['online_order_payment_method_id']);
 header('Location: ' . app_base_path() . '/order_history.php?order=' . $orderId, true, 303);

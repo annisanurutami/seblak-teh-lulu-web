@@ -14,6 +14,8 @@ $pageMap = [
     'topping_save' => 'toppings',
     'topping_delete' => 'toppings',
     'variant_save' => 'variants',
+    'order_type_save' => 'variants',
+    'order_type_status' => 'variants',
     'user_save' => 'users',
     'pos_save' => 'pos',
     'order_status' => 'orders',
@@ -37,6 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !csrf_is_valid($_POST['csrf_token']
 
 $adminActions = [
     'category_save', 'product_save', 'product_delete', 'topping_save', 'topping_delete', 'variant_save',
+    'order_type_save', 'order_type_status',
     'user_save', 'whatsapp_save', 'whatsapp_status', 'whatsapp_delete',
     'store_status_save',
     'payment_method_save', 'payment_method_status', 'payment_method_delete',
@@ -216,6 +219,63 @@ try {
                 throw $exception;
             }
             set_flash('success', 'Kelompok varian berhasil disimpan.');
+            break;
+
+        case 'order_type_save':
+            $id = (int) ($_POST['id'] ?? 0);
+            $name = post_value('nama', 100);
+            $code = post_value('kode', 40);
+            $requiresAddress = isset($_POST['perlu_alamat']) ? 1 : 0;
+            $status = isset($_POST['status']) ? 1 : 0;
+            $order = (int) ($_POST['urutan'] ?? 0);
+            if ($name === '' || !preg_match('/\A[a-z0-9][a-z0-9_-]{1,39}\z/', $code)) {
+                throw new InvalidArgumentException('Nama dan kode varian pesanan wajib diisi dengan benar.');
+            }
+            if ($id > 0) {
+                $current = db_one('SELECT kode, status FROM order_type_options WHERE id = :id', ['id' => $id]);
+                if (!$current || $current['kode'] !== $code) {
+                    throw new InvalidArgumentException('Kode varian yang sudah digunakan tidak dapat diubah.');
+                }
+                if (!$status) {
+                    if ($current['status']) {
+                        $remainingActive = db_one(
+                            'SELECT COUNT(*) AS total FROM order_type_options WHERE status = 1 AND id <> :id',
+                            ['id' => $id]
+                        );
+                        if ((int) $remainingActive['total'] < 1) {
+                            throw new InvalidArgumentException('Minimal satu varian pesanan harus tetap aktif.');
+                        }
+                    }
+                }
+                db()->prepare(
+                    'UPDATE order_type_options SET nama = ?, perlu_alamat = ?, status = ?, urutan = ? WHERE id = ?'
+                )->execute([$name, $requiresAddress, $status, $order, $id]);
+            } else {
+                db()->prepare(
+                    'INSERT INTO order_type_options (kode, nama, perlu_alamat, status, urutan) VALUES (?, ?, ?, ?, ?)'
+                )->execute([$code, $name, $requiresAddress, $status, $order]);
+            }
+            set_flash('success', 'Varian pesanan berhasil disimpan.');
+            break;
+
+        case 'order_type_status':
+            $id = positive_int($_POST['id'] ?? null, 'Varian pesanan');
+            $status = (string) ($_POST['status'] ?? '0') === '1' ? 1 : 0;
+            $current = db_one('SELECT status FROM order_type_options WHERE id = :id', ['id' => $id]);
+            if (!$current) {
+                throw new InvalidArgumentException('Varian pesanan tidak ditemukan.');
+            }
+            if ($current['status'] && !$status) {
+                $activeCount = (int) db_one(
+                    'SELECT COUNT(*) AS total FROM order_type_options WHERE status = 1 AND id <> :id',
+                    ['id' => $id]
+                )['total'];
+                if ($activeCount < 1) {
+                    throw new InvalidArgumentException('Minimal satu varian pesanan harus tetap aktif.');
+                }
+            }
+            db()->prepare('UPDATE order_type_options SET status = ? WHERE id = ?')->execute([$status, $id]);
+            set_flash('success', 'Status varian pesanan berhasil diperbarui.');
             break;
 
         case 'user_save':

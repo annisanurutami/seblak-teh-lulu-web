@@ -118,6 +118,13 @@ function current_user(): ?array
 
 function log_in_user(array $user, bool $remember): void
 {
+    unset(
+        $_SESSION['customer_id'],
+        $_SESSION['customer_login_date'],
+        $_SESSION['online_order_draft'],
+        $_SESSION['online_order_payment_method_id'],
+        $_SESSION['customer_online_order_history']
+    );
     session_regenerate_id(true);
     $_SESSION['user_id'] = (int) $user['id'];
 

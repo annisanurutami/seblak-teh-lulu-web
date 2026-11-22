@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/includes/domain.php';
 
+$customer = require_customer();
+
 if (!store_is_open()) {
     set_flash('error', 'Toko sedang tutup dan belum menerima pesanan online.');
     header('Location: ' . app_base_path() . '/menu.php');
@@ -64,9 +66,9 @@ $message = take_flash();
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Pembayaran | <?= e(APP_NAME) ?></title>
-    <link rel="stylesheet" href="<?= e(app_base_path() . '/assets/css/style.css?v=admin-desktop-20261115') ?>">
-    <link rel="stylesheet" href="<?= e(app_base_path() . '/assets/css/responsive.css?v=admin-desktop-20261115') ?>">
-    <script src="<?= e(app_base_path() . '/assets/js/app.js?v=store-workflow-20261115') ?>" defer></script>
+    <link rel="stylesheet" href="<?= e(app_base_path() . '/assets/css/style.css?v=customer-order-flow-20261122') ?>">
+    <link rel="stylesheet" href="<?= e(app_base_path() . '/assets/css/responsive.css?v=customer-order-flow-20261122') ?>">
+    <script src="<?= e(app_base_path() . '/assets/js/app.js?v=customer-order-flow-20261122') ?>" defer></script>
 </head>
 <body class="store-page">
     <header class="store-header">

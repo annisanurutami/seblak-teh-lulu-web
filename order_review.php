@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/includes/domain.php';
 
+$customer = require_customer();
+
 if (!store_is_open()) {
     set_flash('error', 'Toko sedang tutup dan belum menerima pesanan online.');
     header('Location: ' . app_base_path() . '/menu.php');
@@ -17,12 +19,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     try {
-        $name = post_value('nama_pelanggan', 120);
-        $phone = post_value('no_hp', 25);
-        $orderType = (string) ($_POST['jenis_pesanan'] ?? 'takeaway');
+        $orderType = post_value('jenis_pesanan', 40);
+        $service = order_type_option($orderType);
+        $address = post_value('alamat_pengantaran', 500);
         $submittedItems = $_POST['items'] ?? [];
-        if ($name === '' || $phone === '' || !in_array($orderType, ['dine_in', 'takeaway'], true) || !is_array($submittedItems)) {
-            throw new InvalidArgumentException('Data pemesan dan pesanan harus diisi dengan benar.');
+        if (!$service || !is_array($submittedItems)) {
+            throw new InvalidArgumentException('Varian pesanan atau rincian menu tidak valid.');
+        }
+        if ($service['perlu_alamat'] && $address === '') {
+            throw new InvalidArgumentException('Alamat pengantaran wajib diisi.');
         }
         if (!db_one('SELECT id FROM whatsapp_numbers WHERE status = 1 ORDER BY id LIMIT 1')) {
             throw new InvalidArgumentException('Pemesanan online belum tersedia. Admin perlu mengaktifkan nomor WhatsApp terlebih dahulu.');
@@ -30,9 +35,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $items = normalized_order_items($submittedItems);
         $_SESSION['online_order_draft'] = [
             'created_at' => time(),
-            'name' => $name,
-            'phone' => $phone,
-            'order_type' => $orderType,
+            'name' => $customer['nama'],
+            'phone' => $customer['no_hp'],
+            'order_type' => $service['nama'],
+            'order_type_name' => $service['nama'],
+            'address' => $service['perlu_alamat'] ? $address : '',
             'note' => post_value('catatan', 2000),
             'items' => $items,
         ];
@@ -66,9 +73,9 @@ $message = take_flash();
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Rincian Pesanan | <?= e(APP_NAME) ?></title>
-    <link rel="stylesheet" href="<?= e(app_base_path() . '/assets/css/style.css?v=admin-desktop-20261115') ?>">
-    <link rel="stylesheet" href="<?= e(app_base_path() . '/assets/css/responsive.css?v=admin-desktop-20261115') ?>">
-    <script src="<?= e(app_base_path() . '/assets/js/app.js?v=store-workflow-20261115') ?>" defer></script>
+    <link rel="stylesheet" href="<?= e(app_base_path() . '/assets/css/style.css?v=customer-order-flow-20261122') ?>">
+    <link rel="stylesheet" href="<?= e(app_base_path() . '/assets/css/responsive.css?v=customer-order-flow-20261122') ?>">
+    <script src="<?= e(app_base_path() . '/assets/js/app.js?v=customer-order-flow-20261122') ?>" defer></script>
 </head>
 <body class="store-page">
     <header class="store-header">
@@ -87,7 +94,8 @@ $message = take_flash();
             <div class="order-review-customer">
                 <strong><?= e($draft['name']) ?></strong>
                 <span><?= e($draft['phone']) ?></span>
-                <span><?= $draft['order_type'] === 'dine_in' ? 'Makan di tempat' : 'Dibawa pulang' ?></span>
+                <span><?= e($draft['order_type_name']) ?></span>
+                <?php if ($draft['address'] !== ''): ?><span>Alamat: <?= e($draft['address']) ?></span><?php endif; ?>
             </div>
             <ol class="order-review-list">
                 <?php foreach ($draft['items'] as $index => $item): ?>

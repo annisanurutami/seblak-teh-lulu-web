@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/customer_auth.php';
 
 function db_all(string $sql, array $parameters = []): array
 {
@@ -282,7 +282,8 @@ function create_order(
     string $paymentMethod = 'tunai',
     ?int $whatsappNumberId = null,
     ?string $onlinePaymentMethod = null,
-    ?string $paymentProof = null
+    ?string $paymentProof = null,
+    ?int $customerId = null
 ): int
 {
     $pdo = db();
@@ -291,8 +292,8 @@ function create_order(
     try {
         $orderCode = next_daily_order_code($pdo);
         $insertOrder = $pdo->prepare(
-            'INSERT INTO orders (kode_pesanan, sumber, nama_pelanggan, no_hp, jenis_pesanan, whatsapp_number_id, status_pesanan, status_pembayaran, subtotal, diskon, total, catatan, user_id, metode_pembayaran, bukti_pembayaran)
-             VALUES (:code, :source, :name, :phone, :type, :whatsapp_number_id, :status, :payment_status, :subtotal, 0, :total, :note, :user_id, :payment_method, :payment_proof)'
+            'INSERT INTO orders (kode_pesanan, sumber, nama_pelanggan, no_hp, jenis_pesanan, alamat_pengantaran, whatsapp_number_id, status_pesanan, status_pembayaran, subtotal, diskon, total, catatan, user_id, customer_id, metode_pembayaran, bukti_pembayaran)
+             VALUES (:code, :source, :name, :phone, :type, :address, :whatsapp_number_id, :status, :payment_status, :subtotal, 0, :total, :note, :user_id, :customer_id, :payment_method, :payment_proof)'
         );
         $insertOrder->execute([
             'code' => $orderCode,
@@ -300,6 +301,7 @@ function create_order(
             'name' => $customer['name'] ?: null,
             'phone' => $customer['phone'] ?: null,
             'type' => $orderType,
+            'address' => ($customer['address'] ?? '') ?: null,
             'whatsapp_number_id' => $whatsappNumberId,
             'status' => $status,
             'payment_status' => 'belum_bayar',
@@ -307,6 +309,7 @@ function create_order(
             'total' => $subtotal,
             'note' => $customer['note'] ?: null,
             'user_id' => $userId,
+            'customer_id' => $customerId,
             'payment_method' => $onlinePaymentMethod,
             'payment_proof' => $paymentProof,
         ]);
@@ -345,6 +348,57 @@ function create_order(
         }
         throw $exception;
     }
+}
+
+function online_order_whatsapp_message(array $order, array $items): string
+{
+    $message = "Halo Admin\nSaya mau konfirmasi pesanan.\n\n";
+    $message .= "*KODE PESANAN*\n{$order['kode_pesanan']}\n\n";
+    $message .= "━━━━━━━━━━━━━━\n*PEMESAN*\n";
+    $message .= 'Nama         : ' . ($order['nama_pelanggan'] ?? 'Pelanggan') . "\n";
+    $message .= 'No. WhatsApp : ' . ($order['no_hp'] ?? '-') . "\n";
+    $message .= 'Jenis pesanan: ' . order_type_label((string) $order['jenis_pesanan']) . "\n";
+    if (!empty($order['alamat_pengantaran'])) {
+        $message .= 'Alamat       : ' . $order['alamat_pengantaran'] . "\n";
+    }
+    $message .= "\n━━━━━━━━━━━━━━\n*RINCIAN PESANAN*\n\n";
+
+    foreach ($items as $index => $item) {
+        $message .= '*' . ($index + 1) . '. ' . $item['nama_produk'] . ' × ' . (int) $item['jumlah'] . "*\n";
+        $variants = db_all(
+            'SELECT nama_grup, nama_pilihan FROM order_item_variants WHERE order_item_id = :id ORDER BY id',
+            ['id' => $item['id']]
+        );
+        foreach ($variants as $variant) {
+            $message .= '• ' . $variant['nama_grup'] . ': ' . $variant['nama_pilihan'] . "\n";
+        }
+        $toppings = db_all(
+            'SELECT nama_topping, jumlah, pcs_per_paket FROM order_item_toppings WHERE order_item_id = :id ORDER BY id',
+            ['id' => $item['id']]
+        );
+        foreach ($toppings as $topping) {
+            $pieces = (int) $topping['jumlah'] * (int) $topping['pcs_per_paket'];
+            $message .= '• Topping: ' . $topping['nama_topping'] . ' ' . $pieces . ' pcs' . "\n";
+        }
+        if (!empty($item['catatan'])) {
+            $message .= '• Catatan: ' . $item['catatan'] . "\n";
+        }
+        $message .= '• Subtotal: ' . rupiah($item['subtotal']) . "\n\n";
+    }
+
+    $message .= "━━━━━━━━━━━━━━\n";
+    $message .= '*TOTAL BAYAR: ' . rupiah($order['total']) . "*\n";
+    if (!empty($order['metode_pembayaran'])) {
+        $message .= 'Bayar via: ' . $order['metode_pembayaran'] . "\n";
+    }
+    $message .= !empty($order['bukti_pembayaran'])
+        ? 'Bukti bayar: Sudah diunggah'
+        : 'Bukti bayar: Tidak diperlukan';
+    if (!empty($order['catatan'])) {
+        $message .= "\n\nCatatan: " . $order['catatan'];
+    }
+
+    return $message;
 }
 
 function payment_proof_directory(): string

@@ -6,7 +6,7 @@ require_once __DIR__ . '/includes/customer_auth.php';
 require_once __DIR__ . '/includes/domain.php';
 
 if (!isset($_GET['page']) && !current_user()) {
-    header('Location: ' . app_base_path() . (customer_user() ? '/menu.php' : '/customer_login.php'));
+    header('Location: ' . app_base_path() . '/menu.php');
     exit;
 }
 

@@ -62,7 +62,8 @@ function log_in_customer(int $customerId): void
     unset(
         $_SESSION['online_order_draft'],
         $_SESSION['online_order_payment_method_id'],
-        $_SESSION['customer_online_order_history']
+        $_SESSION['customer_online_order_history'],
+        $_SESSION['customer_login_values']
     );
 }
 
